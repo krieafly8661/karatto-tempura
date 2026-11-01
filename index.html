@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>からっと</title>
+<meta name="description" content="温度計なしで天ぷらを揚げる。衣のしずくと泡の音だけが頼り。">
+<style>
+:root {
+  --bg: #f6f1e7; --surface: #fffaf0; --fg: #2b2118; --muted: #7a6a58; --line: #e2d6c2;
+  --accent: #c8501e; --accent-fg: #fff; --good: #3f8f4f; --bad: #b8322a;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #1b1612; --surface: #26201a; --fg: #f3ebdf; --muted: #b3a491; --line: #3b3128; --accent: #ec7a45; --accent-fg: #1b1612; --good: #6cc27d; --bad: #f07a6e; color-scheme: dark; } }
+:root[data-theme="dark"] { --bg: #1b1612; --surface: #26201a; --fg: #f3ebdf; --muted: #b3a491; --line: #3b3128; --accent: #ec7a45; --accent-fg: #1b1612; --good: #6cc27d; --bad: #f07a6e; color-scheme: dark; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--fg); font: 16px/1.6 "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+.app { max-width: 520px; margin: 0 auto; min-height: 100%; padding: 12px 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+h1 { margin: 0; font-size: 26px; letter-spacing: .04em; }
+.step { color: var(--muted); font-size: 14px; }
+.stage { position: relative; }
+canvas { display: block; width: 100%; border-radius: 14px; background: #3a2c22; }
+.cue { min-height: 3.2em; font-size: 15px; color: var(--muted); }
+.cue b { color: var(--fg); }
+.row { display: flex; gap: 8px; }
+.heat { flex: 1; display: flex; border: 2px solid var(--line); border-radius: 12px; overflow: hidden; }
+.heat button { flex: 1; border: 0; background: var(--surface); color: var(--fg); font: inherit; font-weight: 700; padding: 10px 0; cursor: pointer; }
+.heat button + button { border-left: 2px solid var(--line); }
+.heat button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.btn { border: 2px solid var(--fg); background: var(--surface); color: var(--fg); font: inherit; font-weight: 700; border-radius: 12px; padding: 10px 14px; cursor: pointer; }
+.btn:disabled { opacity: .4; cursor: default; }
+.big { width: 100%; padding: 18px 0; font-size: 20px; background: var(--accent); color: var(--accent-fg); border-color: var(--accent); border-radius: 16px; }
+.big:active { transform: translateY(1px); }
+.overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center;
+  background: var(--bg); border-radius: 14px; padding: 20px; }
+.overlay[hidden] { display: none; }
+.overlay p { margin: 0; max-width: 30em; }
+.lead { font-size: 15px; color: var(--muted); }
+.result { display: flex; flex-direction: column; gap: 12px; }
+.result[hidden] { display: none; }
+.score { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.score .num { font-size: 44px; font-weight: 800; line-height: 1; }
+.score .title { font-size: 20px; font-weight: 700; }
+.plate { width: 100%; border-radius: 14px; display: block; }
+ul.items { list-style: none; margin: 0; padding: 0; border-top: 2px solid var(--fg); }
+ul.items li { display: grid; grid-template-columns: 5.5em 1fr 3em; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+ul.items .pt { text-align: right; font-weight: 700; }
+.small { font-size: 13px; color: var(--muted); }
+.buttons { display: flex; gap: 8px; }
+.buttons .btn { flex: 1; padding: 14px 0; }
+.share { background: var(--fg); color: var(--bg); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header><h1>からっと</h1><span class="step" id="step"></span></header>
+  <div class="stage">
+    <canvas id="cv" aria-label="天ぷら鍋の断面"></canvas>
+    <div class="overlay" id="intro">
+      <p style="font-size:22px;font-weight:800">温度計なしで、天ぷらを揚げる。</p>
+      <p class="lead">衣を一滴落とせば、沈み方で油の温度がわかる。<br>揚げ始めは泡が大きく音が低い。泡が小さく、音が高くなったら引き上げどき。</p>
+      <button class="btn big" id="start" style="max-width:260px">火をつける</button>
+      <p class="small">音が出ます</p>
+    </div>
+  </div>
+  <div class="cue" id="cue"></div>
+  <div class="row" id="ctrlTop">
+    <div class="heat" role="group" aria-label="火加減">
+      <button data-h="0">弱火</button><button data-h="1" aria-pressed="true">中火</button><button data-h="2">強火</button>
+    </div>
+    <button class="btn" id="drip">衣を一滴</button>
+  </div>
+  <button class="btn big" id="main">押しているあいだ衣をつける</button>
+  <section class="result" id="result" hidden>
+    <div class="score"><span class="num" id="rScore"></span><span class="title" id="rTitle"></span></div>
+    <canvas class="plate" id="plate" aria-label="揚がった天ぷら"></canvas>
+    <ul class="items" id="rItems"></ul>
+    <p class="small" id="rTemps"></p>
+    <div class="buttons"><button class="btn share" id="share">結果をXに投稿</button><button class="btn" id="again">もう一回揚げる</button></div>
+    <p class="small" id="rBest"></p>
+  </section>
+</div>
+<script>
+"use strict";
+// ---------- data ----------
+// time: seconds to cook through at the ideal temperature. ideal: best oil temperature (°C).
+const POOL = [
+  { id: "ebi", name: "えび", time: 8, ideal: 178, drop: 6, color: "#e9866a", w: 92, h: 22 },
+  { id: "kabocha", name: "かぼちゃ", time: 12, ideal: 165, drop: 7, color: "#e8a93a", w: 64, h: 34 },
+  { id: "nasu", name: "なす", time: 7, ideal: 176, drop: 6, color: "#6b3f73", w: 70, h: 28 },
+  { id: "shiitake", name: "しいたけ", time: 6, ideal: 172, drop: 4, color: "#8a5a3a", w: 54, h: 30 },
+  { id: "shishito", name: "ししとう", time: 4, ideal: 172, drop: 2, color: "#5b9a3a", w: 70, h: 14 },
+  { id: "renkon", name: "れんこん", time: 10, ideal: 170, drop: 6, color: "#efe4cf", w: 56, h: 30 },
+  { id: "toriten", name: "とり天", time: 13, ideal: 172, drop: 9, color: "#f2d6c4", w: 70, h: 36 },
+  { id: "ika", name: "いか", time: 5, ideal: 182, drop: 5, color: "#f5efe6", w: 80, h: 20 },
+];
+const HEAT_TARGET = [152, 176, 205];
+const ROUNDS = 5;
+
+// ---------- elements ----------
+const $ = (id) => document.getElementById(id);
+const cv = $("cv"), ctx = cv.getContext("2d");
+const cueEl = $("cue"), stepEl = $("step"), mainBtn = $("main"), dripBtn = $("drip");
+const heatBtns = [...document.querySelectorAll(".heat button")];
+
+// ---------- state ----------
+let W = 0, H = 0, DPR = 1;
+let state = "intro"; // intro | prep | coat | fry | done | result
+let heat = 1, T = 120;
+let items = [], idx = 0, results = [];
+let cur = null; // the ingredient in the oil
+let coatStart = 0, coatAmt = 0;
+let drips = [], bubbles = [], specks = [];
+let lastT = 0, msg = "", msgUntil = 0;
+
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = cv.clientWidth; H = Math.round(W * 0.72);
+  cv.width = W * DPR; cv.height = H * DPR; cv.style.height = H + "px";
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener("resize", resize);
+
+// ---------- audio ----------
+let ac = null, noiseBuf = null, master = null, fryTimer = 0;
+function initAudio() {
+  if (ac) return;
+  try {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    master = ac.createGain(); master.gain.value = 0.9; master.connect(ac.destination);
+    noiseBuf = ac.createBuffer(1, ac.sampleRate * 0.5, ac.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  } catch (e) { ac = null; }
+}
+function crackle(freq, gain, len) {
+  if (!ac) return;
+  const t = ac.currentTime;
+  const src = ac.createBufferSource(); src.buffer = noiseBuf;
+  const f = ac.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = freq; f.Q.value = 2.2;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0008, t + len);
+  src.connect(f); f.connect(g); g.connect(master);
+  src.start(t, Math.random() * 0.4, len + 0.02);
+}
+
+// ---------- helpers ----------
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+function mix(c1, c2, t) {
+  const a = parseInt(c1.slice(1), 16), b = parseInt(c2.slice(1), 16);
+  const r = Math.round(lerp(a >> 16, b >> 16, t)), g = Math.round(lerp((a >> 8) & 255, (b >> 8) & 255, t)), bl = Math.round(lerp(a & 255, b & 255, t));
+  return "rgb(" + r + "," + g + "," + bl + ")";
+}
+// batter colour from browning (0 raw, 1 golden, 1.6+ burnt)
+function batterColor(b) {
+  if (b < 1) return mix("#f4ecd6", "#e3a948", clamp(b, 0, 1));
+  if (b < 1.5) return mix("#e3a948", "#8f4a18", (b - 1) / 0.5);
+  return mix("#8f4a18", "#2a1a12", clamp((b - 1.5) / 0.5, 0, 1));
+}
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function say(t, ms) { msg = t; msgUntil = performance.now() + (ms || 2200); }
+
+// ---------- game flow ----------
+function newGame() {
+  items = shuffle(POOL.slice()).slice(0, ROUNDS);
+  idx = 0; results = []; cur = null; T = 118 + Math.random() * 8; setHeat(1);
+  drips = []; bubbles = []; specks = [];
+  $("result").hidden = true; $("intro").hidden = true;
+  document.querySelector(".stage").hidden = false; $("ctrlTop").hidden = false; mainBtn.hidden = false; cueEl.hidden = false;
+  toPrep();
+}
+function toPrep() {
+  state = "prep";
+  const it = items[idx];
+  stepEl.textContent = (idx + 1) + " / " + ROUNDS + " 品目";
+  cueEl.innerHTML = "次は<b>" + it.name + "</b>。火加減を決めて、衣を一滴落として温度を見る。";
+  mainBtn.textContent = "押しているあいだ衣をつける";
+  dripBtn.disabled = false;
+}
+function setHeat(h) { heat = h; heatBtns.forEach((b, i) => b.setAttribute("aria-pressed", String(i === h))); }
+
+function startCoat() {
+  if (state !== "prep") return;
+  initAudio();
+  state = "coat"; coatStart = performance.now(); coatAmt = 0;
+  cueEl.innerHTML = "衣の中でくぐらせている……<b>はなすと油に入れる</b>";
+}
+function endCoat() {
+  if (state !== "coat") return;
+  coatAmt = (performance.now() - coatStart) / 1000;
+  const it = items[idx];
+  cur = { it, p: 0, brown: 0, oil: 0, coat: coatAmt, dropT: T, minT: T, maxT: T, x: W * 0.5, t: 0, bloom: [] };
+  // batter splays into "flowers" when it hits hot oil thinly coated
+  const bloomN = coatAmt > 0.25 && coatAmt < 1.6 ? Math.round(clamp((T - 165) / 2.5, 0, 9)) : 0;
+  for (let i = 0; i < bloomN; i++) cur.bloom.push({ a: Math.random() * Math.PI * 2, r: 0.55 + Math.random() * 0.35, s: 3 + Math.random() * 4 });
+  T -= it.drop;
+  state = "fry";
+  mainBtn.textContent = "引き上げる";
+  dripBtn.disabled = true;
+  cueEl.innerHTML = "泡と音をよく見て、よく聞く。";
+}
+function lift() {
+  if (state !== "fry") return;
+  const r = judge(cur);
+  results.push(r);
+  state = "done";
+  cueEl.innerHTML = "<b>" + r.name + "</b>：" + r.comment;
+  mainBtn.textContent = "……";
+  setTimeout(() => {
+    cur = null; idx++;
+    if (idx >= ROUNDS) showResult(); else toPrep();
+  }, 1500);
+}
+
+// ---------- judging ----------
+function judge(c) {
+  const it = c.it, p = c.p, b = c.brown;
+  let score = 100, comment = "", flaws = [];
+  // inside
+  if (p < 0.75) { score -= 55; flaws.push("raw"); }
+  else if (p < 0.93) { score -= 22; flaws.push("early"); }
+  else if (p > 1.6) { score -= 40; flaws.push("hard"); }
+  else if (p > 1.2) { score -= 15; flaws.push("late"); }
+  // surface
+  const ratio = b / Math.max(p, 0.3);
+  if (b > 1.55) { score -= b > 2 ? 70 : 45; flaws.push("burnt"); }
+  else if (ratio > 1.3 && b > 1.1) { score -= 15; flaws.push("dark"); }
+  else if (b < 0.6) { score -= 12; flaws.push("pale"); }
+  // oil soak
+  if (c.oil > 1.2) { score -= 30; flaws.push("soggy"); }
+  else if (c.oil > 0.5) { score -= 12; flaws.push("oily"); }
+  // coat
+  if (c.coat < 0.25) { score -= 15; flaws.push("bare"); }
+  else if (c.coat > 2.2) { score -= 18; flaws.push("thick"); }
+  else if (c.coat > 1.4) { score -= 7; flaws.push("thickish"); }
+  if (c.bloom.length >= 4 && !flaws.includes("burnt") && !flaws.includes("soggy")) score += 6;
+  score = clamp(Math.round(score), 0, 100);
+
+  const has = (f) => flaws.includes(f);
+  if (has("burnt") && p < 0.9) comment = "外は真っ黒、中は生。強火のわな";
+  else if (has("burnt")) comment = "炭のような何か";
+  else if (has("raw") && has("soggy")) comment = "ぬるい油でふやけた生の" + it.name;
+  else if (has("raw")) comment = "まだ泡が大きかった。中が生";
+  else if (has("soggy")) comment = "油をたっぷり吸ってしんなり";
+  else if (has("hard")) comment = "揚げすぎてカチカチ";
+  else if (has("bare")) comment = "衣がはげて、ほぼ素揚げ";
+  else if (has("thick")) comment = "衣がぼってり。フリッターみたい";
+  else if (score >= 95 && c.bloom.length >= 4) comment = "衣に花が咲いた。からっと";
+  else if (score >= 92) comment = "からっと揚がった";
+  else if (has("early")) comment = "ちょっと早い。芯がかたい";
+  else if (has("late")) comment = "少し揚げすぎ";
+  else if (has("dark")) comment = "色が濃い。油が熱すぎた";
+  else if (has("pale")) comment = "白っぽい。もう少し高い温度で";
+  else if (has("oily")) comment = "少し油っぽい";
+  else comment = "まずまず";
+  return { name: it.name, it, score, comment, brown: b, coat: c.coat, bloom: c.bloom, dropT: c.dropT, oil: c.oil };
+}
+const TITLES = [
+  [97, "天ぷら職人"], [88, "お店で出せる天ぷら"], [75, "家の天ぷらなら上出来"], [60, "天ぷらと呼べる"], [40, "天ぷらのような何か"], [0, "油の事件"],
+];
+
+// ---------- result ----------
+function showResult() {
+  state = "result";
+  const total = Math.round(results.reduce((s, r) => s + r.score, 0) / results.length);
+  let title = TITLES.find((t) => total >= t[0])[1];
+  const nBurnt = results.filter((r) => r.brown > 1.55).length, nSoggy = results.filter((r) => r.oil > 1.2).length;
+  if (nBurnt >= 3) title = "天ぷらの炭火焼き";
+  else if (nSoggy >= 3) title = "油の湖";
+  $("rScore").textContent = total + "点";
+  $("rTitle").textContent = "「" + title + "」";
+  $("rItems").innerHTML = results.map((r) => "<li><b>" + r.name + "</b><span>" + r.comment + "</span><span class=\"pt\">" + r.score + "</span></li>").join("");
+  $("rTemps").textContent = "入れたときの油の温度：" + results.map((r) => r.name + " " + Math.round(r.dropT) + "℃").join("、") + "（ふつうは170〜180℃。かぼちゃは160℃台）";
+  let best = 0; try { best = +localStorage.getItem("karatto.best") || 0; if (total > best) localStorage.setItem("karatto.best", total); } catch (e) {}
+  $("rBest").textContent = total > best ? (best ? "自己ベスト更新（前回まで " + best + "点）" : "") : "自己ベスト " + best + "点";
+  $("result").hidden = false;
+  document.querySelector(".stage").hidden = true; $("ctrlTop").hidden = true; mainBtn.hidden = true; cueEl.hidden = true;
+  stepEl.textContent = "盛りつけ";
+  drawPlate(results);
+  $("share").onclick = () => {
+    const lines = results.map((r) => r.name + "：" + r.comment).join("\n");
+    const text = "からっと｜" + total + "点「" + title + "」\n" + lines + "\n#からっと天ぷら";
+    window.open("https://x.com/intent/post?text=" + encodeURIComponent(text) + "&url=" + encodeURIComponent(location.href.split("#")[0]), "_blank", "noopener");
+  };
+  window.scrollTo(0, 0);
+}
+
+function drawPlate(rs) {
+  const pc = $("plate"), w = pc.clientWidth || 480, h = Math.round(w * 0.62), d = Math.min(2, window.devicePixelRatio || 1);
+  pc.width = w * d; pc.height = h * d; pc.style.height = h + "px";
+  const g = pc.getContext("2d"); g.setTransform(d, 0, 0, d, 0, 0);
+  g.fillStyle = "#2f3a44"; g.fillRect(0, 0, w, h);
+  // basket-like plate and folded paper
+  g.fillStyle = "#c9a46a"; roundRect(g, w * 0.06, h * 0.08, w * 0.88, h * 0.84, 26); g.fill();
+  g.fillStyle = "#fbf7ee"; g.beginPath(); g.moveTo(w * 0.14, h * 0.16); g.lineTo(w * 0.86, h * 0.13); g.lineTo(w * 0.82, h * 0.86); g.lineTo(w * 0.18, h * 0.84); g.closePath(); g.fill();
+  const pos = [[0.32, 0.36], [0.62, 0.32], [0.46, 0.55], [0.3, 0.72], [0.66, 0.68]];
+  rs.forEach((r, i) => {
+    const [px, py] = pos[i];
+    drawItem(g, r.it, w * px, h * py, w / 480, r.brown, r.coat, r.bloom, -0.4 + i * 0.25, r.oil);
+  });
+}
+function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+
+// ---------- drawing an ingredient ----------
+function drawItem(g, it, x, y, s, brown, coat, bloom, rot, oil) {
+  g.save(); g.translate(x, y); g.rotate(rot || 0); g.scale(s, s);
+  const bc = batterColor(brown);
+  const thick = 3 + clamp(coat, 0, 3) * 5;
+  const w = it.w, h = it.h;
+  // batter flowers
+  g.fillStyle = bc;
+  (bloom || []).forEach((f) => {
+    const bx = Math.cos(f.a) * (w / 2 + thick) * f.r * 1.15, by = Math.sin(f.a) * (h / 2 + thick) * f.r * 1.4;
+    g.beginPath(); g.arc(bx, by, f.s, 0, Math.PI * 2); g.fill();
+  });
+  // coat
+  if (coat > 0.15) {
+    g.beginPath(); g.ellipse(0, 0, w / 2 + thick, h / 2 + thick, 0, 0, Math.PI * 2); g.fill();
+  }
+  // ingredient body peeking out where the coat is thin
+  const show = coat < 0.25 ? 1 : coat < 0.7 ? 0.45 : 0.15;
+  g.globalAlpha = show; g.fillStyle = mix(it.color, "#3a2210", clamp(brown - 0.6, 0, 1) * 0.7);
+  if (it.id === "ebi") {
+    g.beginPath(); g.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2); g.fill();
+    g.globalAlpha = 1; g.fillStyle = "#d4442c"; g.beginPath(); g.moveTo(w / 2 - 2, 0); g.lineTo(w / 2 + 16, -10); g.lineTo(w / 2 + 16, 10); g.closePath(); g.fill();
+  } else if (it.id === "renkon") {
+    g.beginPath(); g.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2); g.fill();
+    g.globalAlpha = 1; g.fillStyle = mix(bc, "#5a4030", 0.35);
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; g.beginPath(); g.arc(Math.cos(a) * w * 0.26, Math.sin(a) * h * 0.24, 4, 0, Math.PI * 2); g.fill(); }
+  } else if (it.id === "shiitake") {
+    g.beginPath(); g.ellipse(0, -2, w / 2, h / 2, 0, Math.PI, 0); g.fill();
+    g.fillRect(-6, -2, 12, h / 2);
+  } else if (it.id === "shishito") {
+    g.beginPath(); g.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2); g.fill();
+    g.globalAlpha = 1; g.fillStyle = "#4a7a2a"; g.fillRect(-w / 2 - 10, -3, 12, 6);
+  } else if (it.id === "nasu") {
+    g.beginPath(); g.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2); g.fill();
+    g.globalAlpha = 1; g.strokeStyle = "#2c1a33"; g.lineWidth = 2;
+    for (let i = -2; i <= 2; i++) { g.beginPath(); g.moveTo(i * 9, -h / 2 + 4); g.lineTo(i * 9 + 6, h / 2 - 4); g.stroke(); }
+  } else {
+    g.beginPath(); g.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2); g.fill();
+  }
+  g.globalAlpha = 1;
+  // oily sheen = darker blotches
+  if (oil > 0.5) {
+    g.fillStyle = "rgba(90,60,20," + clamp((oil - 0.5) * 0.35, 0, 0.45) + ")";
+    g.beginPath(); g.ellipse(-w * 0.1, h * 0.1, w * 0.3, h * 0.28, 0, 0, Math.PI * 2); g.fill();
+  }
+  g.restore();
+}
+
+// ---------- simulation ----------
+function update(dt) {
+  // oil temperature drifts toward the burner target
+  const target = HEAT_TARGET[heat] - (cur ? 4 : 0);
+  T += (target - T) * (1 - Math.exp(-dt / 7));
+  T += (Math.random() - 0.5) * 0.3;
+
+  if (cur && state === "fry") {
+    const it = cur.it;
+    cur.t += dt;
+    const rate = clamp((T - 110) / (it.ideal - 110), 0, 1.9);
+    cur.p += dt / it.time * rate;
+    const brownRate = Math.pow(Math.max(0, T - 120) / (it.ideal - 120), 2.4);
+    cur.brown += dt / it.time * brownRate * (cur.coat > 2.2 ? 0.85 : 1);
+    // low oil temperature and thick batter soak up oil
+    cur.oil += dt * (Math.max(0, it.ideal - 14 - T) * 0.018 + Math.max(0, cur.coat - 1.4) * 0.05) * (cur.p < 1.2 ? 1 : 0.6);
+    if (cur.p > 1) cur.oil += dt * 0.02;
+    cur.minT = Math.min(cur.minT, T); cur.maxT = Math.max(cur.maxT, T);
+
+    // bubbles: big and many while wet, small and few when done
+    const wet = clamp(1 - cur.p, 0, 1);
+    const hot = clamp((T - 120) / 60, 0, 1.5);
+    const n = (6 + 70 * wet) * hot * dt + (cur.p > 1 ? 1.2 * dt : 0);
+    for (let i = 0; i < Math.floor(n) + (Math.random() < n % 1 ? 1 : 0); i++) {
+      bubbles.push({ x: cur.x + (Math.random() - 0.5) * it.w * 1.1, y: itemY() + (Math.random() - 0.5) * it.h, r: 1.2 + 5.5 * wet * Math.random() + 0.8, vy: -(40 + 80 * Math.random()) });
+    }
+    // sound: low and loud while wet, high and sparse when done
+    fryTimer -= dt;
+    const rateS = (8 + 90 * wet) * hot + 3;
+    while (fryTimer <= 0) {
+      fryTimer += -Math.log(Math.random() + 1e-6) / rateS;
+      const pc = clamp(cur.p, 0, 1.3);
+      crackle(650 + 2600 * pc + Math.random() * 400, (0.05 + 0.22 * wet) * Math.min(1, hot + 0.2), 0.012 + 0.03 * wet);
+    }
+  } else if (state === "prep" || state === "coat") {
+    // a quiet shimmer of the oil itself
+    fryTimer -= dt;
+    while (fryTimer <= 0) { fryTimer += 0.35 + Math.random() * 0.6; if (T > 165) crackle(3200, 0.015, 0.01); }
+  }
+
+  // test drips of batter
+  drips.forEach((d) => {
+    d.t += dt;
+    const t = d.T;
+    let depth; // 0 surface .. 1 bottom
+    if (t < 150) depth = d.t < 0.6 ? d.t / 0.6 : 1 - clamp((d.t - 2.2) / 3, 0, 1) * 0.05;
+    else if (t < 165) depth = d.t < 0.5 ? d.t / 0.5 : 1 - clamp((d.t - 0.9) / 2.2, 0, 1);
+    else if (t < 182) depth = d.t < 0.35 ? (d.t / 0.35) * 0.5 : 0.5 - clamp((d.t - 0.4) / 0.7, 0, 1) * 0.5;
+    else depth = 0;
+    d.depth = depth;
+    if (t >= 182 && !d.burst) { d.burst = true; for (let i = 0; i < 9; i++) specks.push({ x: d.x, y: oilY() + 2, vx: (Math.random() - 0.5) * 120, vy: (Math.random() - 0.5) * 20, life: 1.5 + Math.random() }); }
+    if (Math.random() < dt * (t > 160 ? 20 : 6) * (depth < 1 ? 1 : 0.4)) bubbles.push({ x: d.x + (Math.random() - 0.5) * 6, y: dripY(d), r: 1 + Math.random() * 1.5, vy: -60 });
+  });
+  drips = drips.filter((d) => d.t < 5);
+  specks.forEach((s) => { s.x += s.vx * dt; s.vx *= Math.exp(-dt * 3); s.life -= dt; });
+  specks = specks.filter((s) => s.life > 0);
+  bubbles.forEach((b) => { b.y += b.vy * dt; b.x += (Math.random() - 0.5) * 12 * dt; });
+  bubbles = bubbles.filter((b) => b.y > oilY() - 2);
+  if (bubbles.length > 400) bubbles.splice(0, bubbles.length - 400);
+}
+
+// geometry
+const potX = () => W * 0.08, potW = () => W * 0.84;
+const oilY = () => H * 0.32, botY = () => H * 0.86;
+function dripY(d) { return lerp(oilY() + 4, botY() - 6, d.depth || 0); }
+function itemY() {
+  if (!cur) return oilY();
+  // sinks a little when dropped, then floats up as moisture leaves
+  const sink = clamp(0.45 - cur.p * 0.42, 0.06, 0.45) * clamp(cur.t / 0.25, 0, 1);
+  return lerp(oilY() + cur.it.h * 0.35, botY() - cur.it.h, sink);
+}
+
+function draw(now) {
+  ctx.clearRect(0, 0, W, H);
+  // wall and stove
+  ctx.fillStyle = "#3a2c22"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#4a3a2e"; ctx.fillRect(0, 0, W, H * 0.18);
+  // flame under the pot
+  const fl = [0.35, 0.65, 1][heat];
+  ctx.fillStyle = "#2a1f18"; ctx.fillRect(W * 0.18, H * 0.93, W * 0.64, H * 0.07);
+  for (let i = 0; i < 9; i++) {
+    const fx = W * 0.22 + i * W * 0.07, fh = (8 + 14 * fl) * (0.8 + 0.4 * Math.sin(now / 90 + i * 1.7));
+    ctx.fillStyle = "#3d7bf0"; ctx.beginPath(); ctx.moveTo(fx - 5, H * 0.93); ctx.quadraticCurveTo(fx, H * 0.93 - fh * 2, fx + 5, H * 0.93); ctx.fill();
+  }
+  // pot
+  ctx.fillStyle = "#1d1d1f"; roundRect(ctx, potX() - 8, H * 0.2, potW() + 16, botY() - H * 0.2 + 10, 16); ctx.fill();
+  ctx.fillStyle = "#56575c"; ctx.fillRect(potX() - 12, H * 0.2, potW() + 24, 6);
+  // oil
+  ctx.fillStyle = "#c9932c"; ctx.fillRect(potX(), oilY(), potW(), botY() - oilY());
+  ctx.fillStyle = "#d9a63d"; ctx.fillRect(potX(), oilY(), potW(), 5);
+  // surface ripple strength shows heat a little
+  ctx.strokeStyle = "#e9bd5a"; ctx.lineWidth = 1.5;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    for (let x = 0; x <= potW(); x += 8) { const yy = oilY() + 10 + i * 9 + Math.sin(x / 22 + now / (500 - heat * 120) + i) * (1 + (T - 120) / 40); x === 0 ? ctx.moveTo(potX() + x, yy) : ctx.lineTo(potX() + x, yy); }
+    ctx.stroke();
+  }
+  // drips
+  drips.forEach((d) => {
+    if (d.T >= 182 && d.t > 0.15) return;
+    ctx.fillStyle = batterColor(clamp(d.t * (d.T - 120) / 200, 0, 1));
+    ctx.beginPath(); ctx.arc(d.x, dripY(d), 5, 0, Math.PI * 2); ctx.fill();
+  });
+  specks.forEach((s) => { ctx.fillStyle = batterColor(0.5); ctx.beginPath(); ctx.arc(s.x, s.y, 2.5, 0, Math.PI * 2); ctx.fill(); });
+  // item
+  if (cur) drawItem(ctx, cur.it, cur.x, itemY(), W / 480, cur.brown, cur.coat, cur.bloom, 0, cur.oil);
+  // item waiting in batter
+  if (state === "prep" || state === "coat") {
+    const it = items[idx];
+    if (it) {
+      ctx.fillStyle = "#f1e8d2"; ctx.beginPath(); ctx.ellipse(W * 0.5, H * 0.1, W * 0.17, H * 0.05, 0, 0, Math.PI * 2); ctx.fill();
+      const c = state === "coat" ? (performance.now() - coatStart) / 1000 : 0;
+      drawItem(ctx, it, W * 0.5, H * 0.1 - (state === "coat" ? 0 : 6), W / 600, 0, c, null, 0, 0);
+    }
+  }
+  // bubbles
+  ctx.strokeStyle = "#fff2c8"; ctx.lineWidth = 1.2;
+  bubbles.forEach((b) => { ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.stroke(); });
+  // coat meter while holding
+  if (state === "coat") {
+    const c = (performance.now() - coatStart) / 1000;
+    const label = c < 0.25 ? "うすすぎ" : c < 0.7 ? "うす衣" : c < 1.4 ? "ふつう" : c < 2.2 ? "厚め" : "ぼってり";
+    ctx.fillStyle = "#fffaf0"; ctx.font = "700 15px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("衣：" + label, W * 0.5, H * 0.21);
+  }
+  if (msg && now < msgUntil) {
+    ctx.fillStyle = "#fffaf0"; ctx.font = "700 15px sans-serif"; ctx.textAlign = "center"; ctx.fillText(msg, W / 2, H * 0.25);
+  }
+}
+
+function loop(now) {
+  const dt = Math.min(0.05, (now - (lastT || now)) / 1000); lastT = now;
+  if (state !== "intro" && state !== "result") update(dt);
+  if (state !== "result") draw(now);
+  requestAnimationFrame(loop);
+}
+
+// ---------- input ----------
+heatBtns.forEach((b, i) => b.addEventListener("click", () => { initAudio(); setHeat(i); }));
+dripBtn.addEventListener("click", () => {
+  if (state !== "prep") return;
+  initAudio();
+  drips.push({ x: potX() + potW() * (0.2 + Math.random() * 0.6), t: 0, T, depth: 0 });
+  crackle(1200 + (T - 150) * 30, T > 165 ? 0.12 : 0.05, 0.03);
+});
+function press(e) {
+  e.preventDefault();
+  if (state === "prep") startCoat();
+  else if (state === "fry") lift();
+}
+function release(e) { if (state === "coat") { e.preventDefault(); endCoat(); } }
+mainBtn.addEventListener("pointerdown", press);
+mainBtn.addEventListener("pointerup", release);
+mainBtn.addEventListener("pointercancel", release);
+mainBtn.addEventListener("pointerleave", release);
+mainBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+window.addEventListener("keydown", (e) => {
+  if (e.repeat) return;
+  if (e.code === "Space") press(e);
+  if (e.key === "1" || e.key === "2" || e.key === "3") setHeat(+e.key - 1);
+  if (e.key === "d") dripBtn.click();
+});
+window.addEventListener("keyup", (e) => { if (e.code === "Space") release(e); });
+$("start").addEventListener("click", () => { initAudio(); if (ac && ac.state === "suspended") ac.resume(); newGame(); });
+$("again").addEventListener("click", newGame);
+
+resize();
+$("ctrlTop").hidden = true; mainBtn.hidden = true;
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
