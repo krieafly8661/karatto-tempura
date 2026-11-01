@@ -1,8 +1,8 @@
 # からっと
 
 温度計なしで天ぷらを揚げるブラウザゲーム。頼りになるのは、衣のしずくの沈み方と、泡の音だけ。
-**遊ぶ：** https://krieafly8661.github.io/karatto-tempura/
 
+**遊ぶ：** https://krieafly8661.github.io/karatto-tempura/
 
 ## 遊び方
 
